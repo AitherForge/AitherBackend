@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     cookie_samesite: str = "none"
     app_url: str = "https://aitherforge.github.io"
-    verification_base_url: str = "https://aitherbackend.onrender.com"
+    verification_base_url: str = "https://aitherbackendnew.onrender.com"
     smtp_host: str = "smtp.resend.com"
     smtp_port: int = 587
     smtp_username: str = "resend"
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     smtp_from_email: str = "onboarding@resend.dev"
     smtp_from_name: str = "Aither"
     verification_token_hours: int = 24
-    google_client_id: str = "37432134429-os2q3m508oljig5kqpef7d18dpjr2fif.apps.googleusercontent.com"
+    google_client_id: str = "430217545519-mcir19njrosrpd5hstamro55qq6f716b.apps.googleusercontent.com"
     openrouter_api_key: str = ""
     openrouter_url: str = "https://openrouter.ai/api/v1/chat/completions"
     ai_model: str = "openai/gpt-oss-120b"
@@ -32,11 +32,7 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-        required_origins = {
-            "https://aitherforge.github.io",
-            "http://localhost:3000",
-            "http://localhost:5173",
-        }
+        required_origins = {"https://aitherforge.github.io","http://localhost:3000","http://localhost:5173"}
         for origin in required_origins:
             if origin not in origins:
                 origins.append(origin)
