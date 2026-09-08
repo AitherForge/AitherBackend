@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+GEMINI_SECRET_FILE = Path("/etc/secrets/GEMINI_API_KEY")
 
 
 class Settings(BaseSettings):
@@ -34,7 +39,7 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-        required_origins = {"https://aitherforge.github.io","http://localhost:3000","http://localhost:5173"}
+        required_origins = {"https://aitherforge.github.io", "http://localhost:3000", "http://localhost:5173"}
         for origin in required_origins:
             if origin not in origins:
                 origins.append(origin)
@@ -54,4 +59,16 @@ class Settings(BaseSettings):
         return {email.strip().lower() for email in self.admin_emails.split(",") if email.strip()}
 
 
+def _load_gemini_secret_file() -> str:
+    """Load the Gemini key from Render's mounted Secret File without logging it."""
+    try:
+        return GEMINI_SECRET_FILE.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
 settings = Settings()
+if not settings.gemini_api_key:
+    secret_from_file = _load_gemini_secret_file()
+    if secret_from_file:
+        settings.gemini_api_key = secret_from_file
