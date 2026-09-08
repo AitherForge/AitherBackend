@@ -16,8 +16,7 @@ router = APIRouter(prefix="/api/mail", tags=["mail"])
 
 def _user(aither_session: str | None, authorization: str | None):
     user = authenticated_user(aither_session, authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    if not user: raise HTTPException(status_code=401, detail="Authentication required.")
     return user
 
 class SendMail(BaseModel):
@@ -34,6 +33,7 @@ def _row(row):
     return {"id": str(row["id"]), "from": row["sender"], "to": row["recipients"], "cc": row["cc"], "subject": row["subject"], "date": row["created_at"], "text": row["body"], "html": "", "read": bool(row["is_read"])}
 
 @router.get("/messages")
+@router.get("/../v2/messages")
 async def list_messages(start: int = 0, limit: int = 100, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
     user = _user(aither_session, authorization)
     start, limit = max(0, start), min(100, max(1, limit))
@@ -42,6 +42,7 @@ async def list_messages(start: int = 0, limit: int = 100, aither_session: str | 
     return {"items": [_row(r) for r in rows], "start": start, "limit": limit}
 
 @router.get("/messages/{message_id}")
+@router.get("/../v1/messages/{message_id}")
 async def get_message(message_id: str, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
     user = _user(aither_session, authorization)
     with connection() as conn:
@@ -51,6 +52,7 @@ async def get_message(message_id: str, aither_session: str | None = Cookie(defau
     return _row(row)
 
 @router.delete("/messages/{message_id}")
+@router.delete("/../v1/messages/{message_id}")
 async def delete_message(message_id: str, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
     user = _user(aither_session, authorization)
     with connection() as conn:
@@ -59,6 +61,7 @@ async def delete_message(message_id: str, aither_session: str | None = Cookie(de
     return {"ok": True}
 
 @router.post("/send")
+@router.post("/../v1/send")
 async def send_message(payload: SendMail, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
     user = _user(aither_session, authorization)
     sender = user["email"]
