@@ -5,10 +5,8 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime, timezone
 from email.utils import parseaddr
-
 from fastapi import APIRouter, Cookie, Header, HTTPException
 from pydantic import BaseModel, Field
-
 from app.api.auth import SESSION_COOKIE, authenticated_user
 from app.db import connection
 
