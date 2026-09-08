@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     ai_model: str = "openai/gpt-oss-120b"
     ai_temperature: float = 0.7
     ai_timeout_seconds: float = 90.0
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.8-flash"
     admin_emails: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
