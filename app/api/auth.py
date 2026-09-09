@@ -20,6 +20,7 @@ from app.db import connection
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 SESSION_COOKIE = "aither_session"
+AITHER_FORGE_LOGO_URL = "https://aitherforge.github.io/AitherTech/aither-forge-logo.jpg"
 
 
 def now() -> datetime:
@@ -116,17 +117,18 @@ def create_verification_token(user_id: str) -> str:
 
 
 async def send_verification_email(name: str, email: str, token: str) -> None:
-    """Send a polished, responsive verification email through Resend."""
+    """Send a polished, responsive Aither Forge verification email through Resend."""
     resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
     if not resend_api_key:
         raise RuntimeError("Email delivery is not configured. Set RESEND_API_KEY in the Render service environment.")
 
     link = f"{settings.verification_base_url.rstrip('/')}/api/auth/verify?token={quote(token)}"
-    from_name = os.getenv("RESEND_FROM_NAME", settings.smtp_from_name).strip() or "Aither"
+    from_name = os.getenv("RESEND_FROM_NAME", settings.smtp_from_name).strip() or "Aither Forge"
     from_email = os.getenv("RESEND_FROM_EMAIL", settings.smtp_from_email).strip() or "onboarding@resend.dev"
     from_address = f"{from_name} <{from_email}>"
     safe_name = html.escape(name or "there")
     safe_link = html.escape(link, quote=True)
+    safe_logo = html.escape(AITHER_FORGE_LOGO_URL, quote=True)
     expiry = settings.verification_token_hours
 
     html_body = f'''<!doctype html>
@@ -134,34 +136,63 @@ async def send_verification_email(name: str, email: str, token: str) -> None:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
   <title>Verify your Aither Account</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172033;">
+<body style="margin:0;padding:0;background:#070b14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#f7f9ff;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Verify your Aither Account email address.</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:32px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#070b14;padding:28px 10px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e4e9f1;border-radius:22px;overflow:hidden;">
-        <tr><td style="padding:30px 32px 22px;text-align:center;background:linear-gradient(135deg,#eef5ff,#ffffff);">
-          <div style="display:inline-block;width:52px;height:52px;line-height:52px;border-radius:16px;background:#111827;color:#ffffff;font-size:25px;font-weight:800;">A</div>
-          <div style="margin-top:12px;font-size:22px;font-weight:800;letter-spacing:-.3px;">Aither</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;background:#0b111d;border:1px solid #243a5c;border-radius:24px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.45);">
+        <tr><td style="padding:34px 28px 28px;text-align:center;background:radial-gradient(circle at 50% 0%,#1b3b682e,transparent 65%),#080d17;">
+          <img src="{safe_logo}" alt="Aither Forge" width="260" style="display:block;width:260px;max-width:85%;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">
+          <p style="margin:16px 0 0;font-size:11px;line-height:1.5;letter-spacing:5px;color:#9db7d9;font-weight:700;">BUILD &nbsp; • &nbsp; CREATE &nbsp; • &nbsp; EXPLORE</p>
         </td></tr>
-        <tr><td style="padding:36px 32px 34px;">
-          <h1 style="margin:0 0 12px;font-size:28px;line-height:1.2;letter-spacing:-.5px;">Verify your email</h1>
-          <p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi {safe_name},</p>
-          <p style="margin:0 0 26px;font-size:16px;line-height:1.65;color:#4b5563;">Thanks for creating your Aither Account. Click the button below to verify your email address and finish setting up your account.</p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr><td align="center" style="border-radius:13px;background:#111827;">
-            <a href="{safe_link}" style="display:inline-block;padding:15px 28px;border-radius:13px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;">Verify my email</a>
-          </td></tr></table>
-          <div style="padding:16px 18px;border-radius:14px;background:#f6f8fb;border:1px solid #e7ebf2;">
-            <p style="margin:0;font-size:13px;line-height:1.6;color:#667085;">This verification link expires in <strong>{expiry} hours</strong>.</p>
-          </div>
-          <p style="margin:26px 0 0;font-size:13px;line-height:1.6;color:#7a8494;">If the button doesn't work, copy and paste this address into your browser:</p>
-          <p style="margin:7px 0 0;word-break:break-all;font-size:12px;line-height:1.6;color:#667085;">{safe_link}</p>
+        <tr><td style="padding:0 18px 18px;background:#080d17;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(145deg,#101b2d,#0b111d);border:1px solid #294568;border-radius:22px;overflow:hidden;">
+            <tr><td style="padding:38px 30px 34px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr><td style="padding:0 0 26px;">
+                  <h1 style="margin:0 0 12px;font-size:30px;line-height:1.15;letter-spacing:-.6px;color:#ffffff;">Hello <span style="color:#28a9ff;">{safe_name}</span>,</h1>
+                  <p style="margin:0 0 14px;font-size:17px;line-height:1.6;color:#d8e4f7;font-weight:700;">Thanks for creating an Aither Account!</p>
+                  <p style="margin:0;font-size:15px;line-height:1.75;color:#aebed5;">To keep your account safe and secure, please verify your email address by clicking the button below. This confirms that you own this email and gives you full access to Aither features.</p>
+                </td></tr>
+                <tr><td align="center" style="padding:4px 0 30px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:14px;background:linear-gradient(135deg,#159ff4,#7757ff);box-shadow:0 10px 30px rgba(40,145,255,.24);">
+                    <a href="{safe_link}" style="display:inline-block;padding:16px 34px;border-radius:14px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;letter-spacing:.1px;">✉ &nbsp; Verify My Email</a>
+                  </td></tr></table>
+                </td></tr>
+                <tr><td style="padding:0 0 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:1px;background:#29405f;font-size:1px;line-height:1px;">&nbsp;</td><td style="padding:0 14px;white-space:nowrap;font-size:12px;color:#8da5c4;">Or copy and paste this link</td><td style="height:1px;background:#29405f;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
+                </td></tr>
+                <tr><td style="padding:14px 16px;border:1px solid #294d78;border-radius:14px;background:#08111e;word-break:break-all;">
+                  <p style="margin:0;font-size:12px;line-height:1.65;color:#39aaff;">🔗 {safe_link}</p>
+                </td></tr>
+                <tr><td style="padding:28px 0 0;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td width="50%" valign="top" style="padding-right:18px;border-right:1px solid #29405f;">
+                      <p style="margin:0 0 4px;font-size:13px;color:#aebed5;">◷ &nbsp; This link expires in</p>
+                      <p style="margin:0;font-size:18px;font-weight:800;color:#27a9ff;">{expiry} hours</p>
+                    </td>
+                    <td width="50%" valign="top" style="padding-left:18px;">
+                      <p style="margin:0 0 4px;font-size:13px;color:#d8e4f7;font-weight:700;">♢ &nbsp; For your security</p>
+                      <p style="margin:0;font-size:12px;line-height:1.6;color:#879bb5;">If you didn't create this account, you can safely ignore this email.</p>
+                    </td>
+                  </tr></table>
+                </td></tr>
+                <tr><td style="padding-top:28px;">
+                  <p style="margin:0 0 4px;font-size:14px;color:#aebed5;">Thanks,</p>
+                  <p style="margin:0;font-size:16px;color:#25a9ff;font-weight:800;">The Aither Forge Team ♡</p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:22px 32px;border-top:1px solid #edf0f4;text-align:center;">
-          <p style="margin:0 0 6px;font-size:12px;color:#8a94a3;">If you didn't create an Aither Account, you can safely ignore this email.</p>
-          <p style="margin:0;font-size:12px;color:#a0a8b5;">— Aither</p>
+        <tr><td style="padding:24px 22px 30px;text-align:center;background:#070b14;">
+          <img src="{safe_logo}" alt="Aither Forge" width="190" style="display:block;width:190px;max-width:70%;height:auto;margin:0 auto 14px;border:0;outline:none;text-decoration:none;">
+          <p style="margin:0 0 20px;font-size:11px;line-height:1.5;letter-spacing:3px;color:#8195b2;font-weight:700;">MORE THAN APPS. IT'S A LIFESTYLE.</p>
+          <p style="margin:0;font-size:11px;line-height:1.6;color:#5f718b;">If you did not create an Aither Account, you can safely ignore this message.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -175,7 +206,7 @@ async def send_verification_email(name: str, email: str, token: str) -> None:
         f"{link}\n\n"
         f"This link expires in {expiry} hours.\n\n"
         "If you did not create an Aither Account, you can safely ignore this email.\n\n"
-        "— Aither"
+        "— Aither Forge"
     )
 
     params: resend.Emails.SendParams = {
