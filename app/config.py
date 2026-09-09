@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 90.0
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
+    firebase_api_key: str = ""
+    firebase_project_id: str = "aither-66da8"
     admin_emails: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
