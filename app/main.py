@@ -10,6 +10,7 @@ from app.api.apps import router as apps_router
 from app.api.auth import router as auth_router
 from app.api.config import router as config_router
 from app.api.data import router as data_router
+from app.api.firebase_auth import router as firebase_auth_router
 from app.api.google_auth import router as google_auth_router
 from app.api.health import router as health_router
 from app.api.healthz import router as healthz_router
@@ -32,6 +33,7 @@ app.add_middleware(CORSMiddleware,allow_origins=settings.cors_origin_list,allow_
 
 app.include_router(status_router)
 app.include_router(auth_router)
+app.include_router(firebase_auth_router)
 app.include_router(google_auth_router)
 app.include_router(admin_router)
 app.include_router(ai_router)
