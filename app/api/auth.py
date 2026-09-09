@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
+import os
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -114,32 +116,74 @@ def create_verification_token(user_id: str) -> str:
 
 
 async def send_verification_email(name: str, email: str, token: str) -> None:
-    """Send verification mail through Resend's HTTPS API.
-
-    This intentionally uses RESEND_API_KEY instead of requiring SMTP settings.
-    Resend documents the API as the primary email-sending interface, and the
-    existing Aither mail service already uses the same key.
-    """
-    resend_api_key = __import__("os").getenv("RESEND_API_KEY", "").strip()
+    """Send a polished, responsive verification email through Resend."""
+    resend_api_key = os.getenv("RESEND_API_KEY", "").strip()
     if not resend_api_key:
         raise RuntimeError("Email delivery is not configured. Set RESEND_API_KEY in the Render service environment.")
 
     link = f"{settings.verification_base_url.rstrip('/')}/api/auth/verify?token={quote(token)}"
-    from_name = __import__("os").getenv("RESEND_FROM_NAME", settings.smtp_from_name).strip() or "Aither"
-    from_email = __import__("os").getenv("RESEND_FROM_EMAIL", settings.smtp_from_email).strip() or "onboarding@resend.dev"
+    from_name = os.getenv("RESEND_FROM_NAME", settings.smtp_from_name).strip() or "Aither"
+    from_email = os.getenv("RESEND_FROM_EMAIL", settings.smtp_from_email).strip() or "onboarding@resend.dev"
     from_address = f"{from_name} <{from_email}>"
+    safe_name = html.escape(name or "there")
+    safe_link = html.escape(link, quote=True)
+    expiry = settings.verification_token_hours
+
+    html_body = f'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Verify your Aither Account</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172033;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Verify your Aither Account email address.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e4e9f1;border-radius:22px;overflow:hidden;">
+        <tr><td style="padding:30px 32px 22px;text-align:center;background:linear-gradient(135deg,#eef5ff,#ffffff);">
+          <div style="display:inline-block;width:52px;height:52px;line-height:52px;border-radius:16px;background:#111827;color:#ffffff;font-size:25px;font-weight:800;">A</div>
+          <div style="margin-top:12px;font-size:22px;font-weight:800;letter-spacing:-.3px;">Aither</div>
+        </td></tr>
+        <tr><td style="padding:36px 32px 34px;">
+          <h1 style="margin:0 0 12px;font-size:28px;line-height:1.2;letter-spacing:-.5px;">Verify your email</h1>
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi {safe_name},</p>
+          <p style="margin:0 0 26px;font-size:16px;line-height:1.65;color:#4b5563;">Thanks for creating your Aither Account. Click the button below to verify your email address and finish setting up your account.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr><td align="center" style="border-radius:13px;background:#111827;">
+            <a href="{safe_link}" style="display:inline-block;padding:15px 28px;border-radius:13px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;">Verify my email</a>
+          </td></tr></table>
+          <div style="padding:16px 18px;border-radius:14px;background:#f6f8fb;border:1px solid #e7ebf2;">
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#667085;">This verification link expires in <strong>{expiry} hours</strong>.</p>
+          </div>
+          <p style="margin:26px 0 0;font-size:13px;line-height:1.6;color:#7a8494;">If the button doesn't work, copy and paste this address into your browser:</p>
+          <p style="margin:7px 0 0;word-break:break-all;font-size:12px;line-height:1.6;color:#667085;">{safe_link}</p>
+        </td></tr>
+        <tr><td style="padding:22px 32px;border-top:1px solid #edf0f4;text-align:center;">
+          <p style="margin:0 0 6px;font-size:12px;color:#8a94a3;">If you didn't create an Aither Account, you can safely ignore this email.</p>
+          <p style="margin:0;font-size:12px;color:#a0a8b5;">— Aither</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>'''
+
+    text_body = (
+        f"Hi {name},\n\n"
+        "Thanks for creating your Aither Account. Verify your email address here:\n\n"
+        f"{link}\n\n"
+        f"This link expires in {expiry} hours.\n\n"
+        "If you did not create an Aither Account, you can safely ignore this email.\n\n"
+        "— Aither"
+    )
 
     params: resend.Emails.SendParams = {
         "from": from_address,
         "to": [email],
-        "subject": "Verify your Aither Account email",
-        "text": (
-            f"Hi {name},\n\n"
-            f"Verify your Aither Account email by opening this link:\n{link}\n\n"
-            f"This link expires in {settings.verification_token_hours} hours.\n\n"
-            "If you did not create an Aither Account, you can ignore this email.\n\n"
-            "— Aither"
-        ),
+        "subject": "Verify your Aither Account",
+        "html": html_body,
+        "text": text_body,
     }
     resend.api_key = resend_api_key
     await resend.Emails.send_async(params)
