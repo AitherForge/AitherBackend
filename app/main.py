@@ -18,6 +18,7 @@ from app.api.mail import router as mail_router
 from app.api.notifications import router as notifications_router
 from app.api.password_reset import router as password_reset_router
 from app.api.status import router as status_router
+from app.api.storage import router as storage_router
 from app.api.updates import router as updates_router
 from app.api.users import router as users_router
 from app.api.weather import router as weather_router
@@ -42,6 +43,7 @@ app.include_router(ai_router)
 app.include_router(apps_router)
 app.include_router(data_router)
 app.include_router(mail_router)
+app.include_router(storage_router)
 app.include_router(updates_router)
 app.include_router(health_router)
 app.include_router(healthz_router)
