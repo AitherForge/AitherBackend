@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+from datetime import timedelta
+
 from fastapi import APIRouter, Cookie, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
+from firebase_admin import get_app, storage
 
 from app.api.auth import SESSION_COOKIE, authenticated_user
-from app.firebase import firebase_storage_bucket, firebase_storage_enabled
+from app.firebase import _initialize
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 
@@ -16,18 +20,29 @@ def _user_id(aither_session: str | None, authorization: str | None) -> str:
     return str(user["id"])
 
 
-def _require_storage() -> object:
-    if not firebase_storage_enabled():
-        raise HTTPException(status_code=503, detail="Firebase Storage is not configured on AitherBackendNew.")
+def _storage_bucket():
     try:
-        return firebase_storage_bucket()
+        _initialize()
+        app = get_app()
+        configured = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip()
+        if configured:
+            return storage.bucket(configured, app=app)
+        project_id = os.getenv("FIREBASE_PROJECT_ID", "aither-66da8").strip() or "aither-66da8"
+        last_error: Exception | None = None
+        for name in (f"{project_id}.firebasestorage.app", f"{project_id}.appspot.com"):
+            candidate = storage.bucket(name, app=app)
+            try:
+                if candidate.exists():
+                    return candidate
+            except Exception as exc:
+                last_error = exc
+        raise RuntimeError("No Firebase Storage bucket found.") from last_error
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Firebase Storage is unavailable.") from exc
 
 
 def _safe_name(name: str | None) -> str:
-    value = str(name or "file")
-    value = value.replace("\\", "_")
+    value = str(name or "file").replace("\\", "_")
     for char in "/#?%*:|\"<>":
         value = value.replace(char, "_")
     return value[:180] or "file"
@@ -40,21 +55,16 @@ def _prefix(user_id: str) -> str:
 def _key(user_id: str, name: str) -> str:
     import secrets
     from time import time_ns
-
     return f"{_prefix(user_id)}{time_ns()}-{secrets.token_hex(16)}-{_safe_name(name)}"
 
 
 @router.get("/health")
 async def storage_health() -> dict[str, object]:
-    if not firebase_storage_enabled():
-        return {"ok": False, "storage": "Firebase Storage", "configured": False}
     try:
-        bucket = firebase_storage_bucket()
-        # A metadata request validates credentials/bucket access without listing user files.
-        bucket.get_iam_policy(requested_policy_version=3)
-        return {"ok": True, "storage": "Firebase Storage", "configured": True}
-    except Exception as exc:
-        return {"ok": False, "storage": "Firebase Storage", "configured": True, "error": str(exc)}
+        bucket = _storage_bucket()
+        return {"ok": bool(bucket.exists()), "storage": "Firebase Storage", "configured": True}
+    except HTTPException as exc:
+        return {"ok": False, "storage": "Firebase Storage", "configured": False, "error": exc.detail}
 
 
 @router.get("/files")
@@ -63,20 +73,13 @@ async def list_files(
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    bucket = _require_storage()
+    bucket = _storage_bucket()
     try:
-        blobs = bucket.list_blobs(prefix=_prefix(user_id))
         files = []
-        for blob in blobs:
+        for blob in bucket.list_blobs(prefix=_prefix(user_id)):
             name = blob.name.rsplit("/", 1)[-1]
             display_name = name.split("-", 2)[-1] if name.count("-") >= 2 else name
-            files.append({
-                "key": blob.name,
-                "name": display_name,
-                "size": int(blob.size or 0),
-                "added": blob.time_created.isoformat() if blob.time_created else None,
-                "type": blob.content_type or "application/octet-stream",
-            })
+            files.append({"key": blob.name, "name": display_name, "size": int(blob.size or 0), "added": blob.time_created.isoformat() if blob.time_created else None, "type": blob.content_type or "application/octet-stream"})
         return {"files": files}
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Unable to list files.") from exc
@@ -89,12 +92,10 @@ async def upload_file(
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    bucket = _require_storage()
+    bucket = _storage_bucket()
     key = _key(user_id, file.filename or "file")
     blob = bucket.blob(key)
     try:
-        # UploadFile is backed by a spooled temporary file, so the whole upload is not
-        # required to live in RAM. This keeps large uploads practical on Render.
         await file.seek(0)
         blob.upload_from_file(file.file, content_type=file.content_type or "application/octet-stream", rewind=True)
         blob.reload()
@@ -118,14 +119,12 @@ async def file_url(
     user_id = _user_id(aither_session, authorization)
     if not key.startswith(_prefix(user_id)):
         raise HTTPException(status_code=403, detail="Forbidden")
-    bucket = _require_storage()
+    bucket = _storage_bucket()
     try:
         blob = bucket.blob(key)
         if not blob.exists():
             raise HTTPException(status_code=404, detail="File not found")
-        from datetime import timedelta
-        url = blob.generate_signed_url(version="v4", expiration=timedelta(minutes=15), method="GET")
-        return {"url": url}
+        return {"url": blob.generate_signed_url(version="v4", expiration=timedelta(minutes=15), method="GET")}
     except HTTPException:
         raise
     except Exception as exc:
@@ -141,11 +140,10 @@ async def delete_file(
     user_id = _user_id(aither_session, authorization)
     if not key.startswith(_prefix(user_id)):
         raise HTTPException(status_code=403, detail="Forbidden")
-    bucket = _require_storage()
+    bucket = _storage_bucket()
     try:
-        bucket.blob(key).delete(if_generation_match=None)
+        bucket.blob(key).delete()
     except Exception as exc:
-        # Treat an already-missing object as successfully deleted.
         if "Not Found" not in str(exc) and "404" not in str(exc):
             raise HTTPException(status_code=500, detail="Unable to delete file.") from exc
     return Response(status_code=204)
