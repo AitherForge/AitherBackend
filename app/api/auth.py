@@ -3,12 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-import smtplib
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import quote
 
+import resend
 from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -113,21 +113,36 @@ def create_verification_token(user_id: str) -> str:
     return raw
 
 
-def send_verification_email(name: str, email: str, token: str) -> None:
-    if not settings.smtp_host or not settings.smtp_username or not settings.smtp_password or not settings.smtp_from_email:
-        raise RuntimeError("Email delivery is not configured. Set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL.")
+async def send_verification_email(name: str, email: str, token: str) -> None:
+    """Send verification mail through Resend's HTTPS API.
+
+    This intentionally uses RESEND_API_KEY instead of requiring SMTP settings.
+    Resend documents the API as the primary email-sending interface, and the
+    existing Aither mail service already uses the same key.
+    """
+    resend_api_key = __import__("os").getenv("RESEND_API_KEY", "").strip()
+    if not resend_api_key:
+        raise RuntimeError("Email delivery is not configured. Set RESEND_API_KEY in the Render service environment.")
+
     link = f"{settings.verification_base_url.rstrip('/')}/api/auth/verify?token={quote(token)}"
-    message = EmailMessage()
-    message["Subject"] = "Verify your Aither Account email"
-    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
-    message["To"] = email
-    message.set_content(
-        f"Hi {name},\n\nVerify your Aither Account email by opening this link:\n{link}\n\nThis link expires in {settings.verification_token_hours} hours.\n\nIf you did not create an Aither Account, you can ignore this email.\n\n— Aither"
-    )
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
-        server.starttls()
-        server.login(settings.smtp_username, settings.smtp_password)
-        server.send_message(message)
+    from_name = __import__("os").getenv("RESEND_FROM_NAME", settings.smtp_from_name).strip() or "Aither"
+    from_email = __import__("os").getenv("RESEND_FROM_EMAIL", settings.smtp_from_email).strip() or "onboarding@resend.dev"
+    from_address = f"{from_name} <{from_email}>"
+
+    params: resend.Emails.SendParams = {
+        "from": from_address,
+        "to": [email],
+        "subject": "Verify your Aither Account email",
+        "text": (
+            f"Hi {name},\n\n"
+            f"Verify your Aither Account email by opening this link:\n{link}\n\n"
+            f"This link expires in {settings.verification_token_hours} hours.\n\n"
+            "If you did not create an Aither Account, you can ignore this email.\n\n"
+            "— Aither"
+        ),
+    }
+    resend.api_key = resend_api_key
+    await resend.Emails.send_async(params)
 
 
 class RegisterRequest(BaseModel):
@@ -165,7 +180,7 @@ async def register(payload: RegisterRequest, response: Response) -> dict[str, ob
     session_token_value = create_session(user_id)
     verification_token = create_verification_token(user_id)
     try:
-        send_verification_email(name, email, verification_token)
+        await send_verification_email(name, email, verification_token)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Account created, but the verification email could not be sent: {exc}") from exc
     set_session_cookie(response, session_token_value)
@@ -197,7 +212,7 @@ async def resend_verification(
         return {"sent": False, "already_verified": True}
     token = create_verification_token(str(user["id"]))
     try:
-        send_verification_email(str(user["name"]), str(user["email"]), token)
+        await send_verification_email(str(user["name"]), str(user["email"]), token)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"The verification email could not be sent: {exc}") from exc
     return {"sent": True}
