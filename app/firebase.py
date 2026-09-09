@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 
 
 _DEFAULT_SECRET_FILES = (
@@ -18,6 +18,7 @@ _DEFAULT_SECRET_FILES = (
 
 _app = None
 _db = None
+_bucket = None
 
 
 def _service_account_source() -> str | dict[str, Any] | None:
@@ -47,10 +48,10 @@ def firebase_enabled() -> bool:
     return _service_account_source() is not None
 
 
-def db():
-    global _app, _db
-    if _db is not None:
-        return _db
+def _initialize() -> None:
+    global _app
+    if _app is not None:
+        return
 
     source = _service_account_source()
     if source is None:
@@ -59,15 +60,37 @@ def db():
             "and set FIREBASE_SERVICE_ACCOUNT_FILE to /etc/secrets/<filename> if it is not one of the default names."
         )
 
-    if isinstance(source, str):
-        cred = credentials.Certificate(source)
-    else:
-        cred = credentials.Certificate(source)
-
+    cred = credentials.Certificate(source)
     project_id = os.getenv("FIREBASE_PROJECT_ID", "aither-66da8").strip() or "aither-66da8"
-    _app = firebase_admin.initialize_app(cred, {"projectId": project_id})
+    bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip() or None
+    options: dict[str, str] = {"projectId": project_id}
+    if bucket_name:
+        options["storageBucket"] = bucket_name
+    _app = firebase_admin.initialize_app(cred, options)
+
+
+def db():
+    global _db
+    if _db is not None:
+        return _db
+    _initialize()
     _db = firestore.client(app=_app)
     return _db
+
+
+def firebase_storage_enabled() -> bool:
+    return firebase_enabled() and bool(os.getenv("FIREBASE_STORAGE_BUCKET", "").strip())
+
+
+def firebase_storage_bucket():
+    global _bucket
+    if _bucket is not None:
+        return _bucket
+    if not firebase_storage_enabled():
+        raise RuntimeError("FIREBASE_STORAGE_BUCKET is not configured.")
+    _initialize()
+    _bucket = storage.bucket(app=_app)
+    return _bucket
 
 
 def user_app_ref(user_id: str, app_id: str):
