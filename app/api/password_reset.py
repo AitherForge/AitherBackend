@@ -28,10 +28,7 @@ def make_token(user_id: str) -> str:
     expires = created + timedelta(hours=1)
     with connection() as conn:
         conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
-        conn.execute(
-            "INSERT INTO password_reset_tokens(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)",
-            (token_hash(raw), user_id, created.isoformat(), expires.isoformat()),
-        )
+        conn.execute("INSERT INTO password_reset_tokens(token_hash,user_id,created_at,expires_at) VALUES(?,?,?,?)", (token_hash(raw), user_id, created.isoformat(), expires.isoformat()))
     return raw
 
 
@@ -90,4 +87,4 @@ async def reset_password(payload: ResetPasswordRequest) -> dict[str, bool]:
 @router.get("/reset-password", response_class=HTMLResponse)
 async def reset_password_page(token: str = Query(min_length=20)) -> str:
     safe_token = html.escape(token, quote=True)
-    return f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aither — Reset Password</title></head><body style="margin:0;background:#080d17;color:white;font-family:Arial,Helvetica,sans-serif"><main style="max-width:440px;margin:12vh auto;padding:28px;background:#101b2d;border:1px solid #294568;border-radius:20px"><h1 style="color:#28a9ff">Choose a new password</h1><form method="post" action="/api/auth/reset-password"><input type="hidden" name="token" value="{safe_token}"><input name="password" type="password" minlength="8" required placeholder="New password" style="width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #47627f;background:#08111e;color:white"><button type="submit" style="padding:14px 20px;border:0;border-radius:10px;background:#159ff4;color:white;font-weight:700">Set New Password</button></form></main></body></html>'''
+    return f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aither — Reset Password</title></head><body style="margin:0;background:#080d17;color:white;font-family:Arial,Helvetica,sans-serif"><main style="max-width:440px;margin:12vh auto;padding:28px;background:#101b2d;border:1px solid #294568;border-radius:20px"><h1 style="color:#28a9ff">Choose a new password</h1><input id="password" type="password" minlength="8" required placeholder="New password" style="width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #47627f;background:#08111e;color:white"><button id="submit" style="padding:14px 20px;border:0;border-radius:10px;background:#159ff4;color:white;font-weight:700">Set New Password</button><p id="status"></p></main><script>document.getElementById('submit').onclick=async()=>{const password=document.getElementById('password').value;const status=document.getElementById('status');if(password.length<8){status.textContent='Use at least 8 characters.';return}const r=await fetch('/api/auth/reset-password',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{token:'{safe_token}',password}})}});const d=await r.json().catch(()=>({{}}));status.textContent=r.ok?'Password changed. You can now sign in.':(d.detail||'Reset failed.');};</script></body></html>'''
