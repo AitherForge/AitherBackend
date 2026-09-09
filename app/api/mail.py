@@ -142,11 +142,11 @@ async def send_message(
     if not resend_api_key:
         raise HTTPException(status_code=503, detail="Email delivery is not configured: RESEND_API_KEY is missing.")
 
-    # Resend requires the From address to belong to a verified sending domain.
-    # Keep the user's address as Reply-To so replies still go to the Aither user.
+    # Use Resend's default testing domain. Resend restricts resend.dev delivery
+    # to the email address associated with the Resend account.
     resend.api_key = resend_api_key
-    from_email = os.getenv("RESEND_FROM_EMAIL", os.getenv("SMTP_FROM_EMAIL", "onboarding@resend.dev")).strip()
-    from_name = os.getenv("RESEND_FROM_NAME", os.getenv("SMTP_FROM_NAME", "Aither")).strip()
+    from_name = os.getenv("RESEND_FROM_NAME", "Aither").strip()
+    from_email = "onboarding@resend.dev"
     from_address = f"{from_name} <{from_email}>" if from_name else from_email
 
     params: resend.Emails.SendParams = {
