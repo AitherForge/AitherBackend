@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Response
+from fastapi import APIRouter, Cookie, Header, HTTPException
 from pydantic import BaseModel, Field
+from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
-from app.api.auth import SESSION_COOKIE, authenticated_user, session_token, token_hash
-from app.db import connection
+from app.api.auth import SESSION_COOKIE, authenticated_user
+from app.firebase import all_user_apps, firebase_enabled, user_app_ref
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -19,60 +19,84 @@ def _user_id(aither_session: str | None, authorization: str | None) -> str:
     return str(user["id"])
 
 
+def _require_firebase() -> None:
+    if not firebase_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Firebase storage is not configured on AitherBackendNew.",
+        )
+
+
 class AppData(BaseModel):
     data: dict = Field(default_factory=dict)
 
 
 @router.get("")
-async def get_all_data(aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def get_all_data(
+    aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    with connection() as conn:
-        rows = conn.execute(
-            "SELECT app_id,data_json,updated_at FROM user_app_data WHERE user_id = ? ORDER BY app_id",
-            (user_id,),
-        ).fetchall()
-    apps = {}
-    for row in rows:
-        try:
-            apps[row["app_id"]] = {"data": json.loads(row["data_json"]), "updated_at": row["updated_at"]}
-        except json.JSONDecodeError:
-            apps[row["app_id"]] = {"data": {}, "updated_at": row["updated_at"]}
+    _require_firebase()
+    apps = all_user_apps(user_id)
     return {"apps": apps}
 
 
 @router.get("/{app_id}")
-async def get_app_data(app_id: str, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def get_app_data(
+    app_id: str,
+    aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    with connection() as conn:
-        row = conn.execute(
-            "SELECT data_json,updated_at FROM user_app_data WHERE user_id = ? AND app_id = ?",
-            (user_id, app_id),
-        ).fetchone()
-    if not row:
+    _require_firebase()
+    if not app_id or len(app_id) > 80 or any(
+        c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in app_id
+    ):
+        raise HTTPException(status_code=400, detail="Invalid app id.")
+    snapshot = user_app_ref(user_id, app_id).get()
+    if not snapshot.exists:
         return {"app_id": app_id, "data": {}, "updated_at": None}
-    return {"app_id": app_id, "data": json.loads(row["data_json"]), "updated_at": row["updated_at"]}
+    value = snapshot.to_dict() or {}
+    return {"app_id": app_id, "data": value.get("data", {}), "updated_at": value.get("updated_at")}
 
 
 @router.put("/{app_id}")
-async def put_app_data(app_id: str, payload: AppData, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def put_app_data(
+    app_id: str,
+    payload: AppData,
+    aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    if not app_id or len(app_id) > 80 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in app_id):
+    _require_firebase()
+    if not app_id or len(app_id) > 80 or any(
+        c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in app_id
+    ):
         raise HTTPException(status_code=400, detail="Invalid app id.")
-    encoded = json.dumps(payload.data, separators=(",", ":"), ensure_ascii=False)
-    if len(encoded.encode("utf-8")) > 2_000_000:
-        raise HTTPException(status_code=413, detail="App data is too large (2 MB maximum).")
-    updated = datetime.now(timezone.utc).isoformat()
-    with connection() as conn:
-        conn.execute(
-            "INSERT INTO user_app_data(user_id,app_id,data_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id,app_id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at",
-            (user_id, app_id, encoded, updated),
-        )
-    return {"ok": True, "app_id": app_id, "updated_at": updated}
+
+    # Firestore documents are limited to 1 MiB. Keep the existing API's
+    # conservative 2 MB request guard, while enforcing the actual limit here.
+    import json
+    encoded = json.dumps(payload.data, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > 900_000:
+        raise HTTPException(status_code=413, detail="App data is too large for Firebase storage.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    user_app_ref(user_id, app_id).set(
+        {"data": payload.data, "updated_at": now, "updated_at_server": SERVER_TIMESTAMP},
+        merge=True,
+    )
+    return {"ok": True, "app_id": app_id, "updated_at": now}
 
 
 @router.delete("/{app_id}")
-async def delete_app_data(app_id: str, response: Response, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)) -> dict[str, object]:
+async def delete_app_data(
+    app_id: str,
+    aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
     user_id = _user_id(aither_session, authorization)
-    with connection() as conn:
-        conn.execute("DELETE FROM user_app_data WHERE user_id = ? AND app_id = ?", (user_id, app_id))
+    _require_firebase()
+    user_app_ref(user_id, app_id).delete()
     return {"ok": True, "app_id": app_id}
