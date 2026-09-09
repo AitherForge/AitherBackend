@@ -16,6 +16,7 @@ from app.api.health import router as health_router
 from app.api.healthz import router as healthz_router
 from app.api.mail import router as mail_router
 from app.api.notifications import router as notifications_router
+from app.api.password_reset import router as password_reset_router
 from app.api.status import router as status_router
 from app.api.updates import router as updates_router
 from app.api.users import router as users_router
@@ -33,6 +34,7 @@ app.add_middleware(CORSMiddleware,allow_origins=settings.cors_origin_list,allow_
 
 app.include_router(status_router)
 app.include_router(auth_router)
+app.include_router(password_reset_router)
 app.include_router(firebase_auth_router)
 app.include_router(google_auth_router)
 app.include_router(admin_router)
