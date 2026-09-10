@@ -17,6 +17,7 @@ from app.api.healthz import router as healthz_router
 from app.api.mail import router as mail_router
 from app.api.notifications import router as notifications_router
 from app.api.password_reset import router as password_reset_router
+from app.api.search import router as search_router
 from app.api.status import router as status_router
 from app.api.storage import router as storage_router
 from app.api.updates import router as updates_router
@@ -51,6 +52,7 @@ app.include_router(users_router)
 app.include_router(notifications_router)
 app.include_router(config_router)
 app.include_router(weather_router)
+app.include_router(search_router)
 
 @app.get("/")
 async def root() -> dict[str,str]:
