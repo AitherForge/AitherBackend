@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:3000,http://localhost:5173,https://aitherforge.github.io"
     database_url: str = "sqlite:///./aither.db"
-    session_ttl_hours: int = 168
+    # Keep users signed in across browser/app sessions for 30 days.
+    session_ttl_hours: int = 720
     secure_cookies: bool = True
     cookie_samesite: str = "none"
     app_url: str = "https://aitherforge.github.io"
