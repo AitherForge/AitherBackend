@@ -1,9 +1,15 @@
 from pathlib import Path
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 GEMINI_SECRET_FILE = Path("/etc/secrets/GEMINI_API_KEY")
+RESEND_SECRET_FILES = (
+    Path("/etc/secrets/RESEND_API_KEY"),
+    Path("/etc/secrets/resend_api_key"),
+    Path("/etc/secrets/resend-api-key"),
+)
 
 
 class Settings(BaseSettings):
@@ -12,7 +18,6 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:3000,http://localhost:5173,https://aitherforge.github.io"
     database_url: str = "sqlite:///./aither.db"
-    # Keep users signed in across browser/app sessions for 30 days.
     session_ttl_hours: int = 720
     secure_cookies: bool = True
     cookie_samesite: str = "none"
@@ -70,8 +75,28 @@ def _load_gemini_secret_file() -> str:
         return ""
 
 
+def _load_resend_secret_file() -> str:
+    """Load the Resend key from Render Secret Files without logging it."""
+    for path in RESEND_SECRET_FILES:
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, OSError):
+            continue
+        if value:
+            return value
+    return ""
+
+
 settings = Settings()
 if not settings.gemini_api_key:
     secret_from_file = _load_gemini_secret_file()
     if secret_from_file:
         settings.gemini_api_key = secret_from_file
+
+# The auth module historically reads RESEND_API_KEY from the environment.
+# Bridge Render's mounted Secret File into that runtime environment without
+# ever committing the credential to GitHub or exposing it to the frontend.
+if not os.getenv("RESEND_API_KEY", "").strip():
+    resend_secret = _load_resend_secret_file()
+    if resend_secret:
+        os.environ["RESEND_API_KEY"] = resend_secret
