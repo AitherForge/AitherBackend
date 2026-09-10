@@ -10,6 +10,11 @@ RESEND_SECRET_FILES = (
     Path("/etc/secrets/resend_api_key"),
     Path("/etc/secrets/resend-api-key"),
 )
+SERPSTACK_SECRET_FILES = (
+    Path("/etc/secrets/SERPSTACK_API_KEY"),
+    Path("/etc/secrets/serpstack_api_key"),
+    Path("/etc/secrets/serpstack-api-key"),
+)
 
 
 class Settings(BaseSettings):
@@ -41,6 +46,9 @@ class Settings(BaseSettings):
     firebase_api_key: str = ""
     firebase_project_id: str = "aither-66da8"
     admin_emails: str = ""
+    serpstack_api_key: str = ""
+    serpstack_url: str = "https://api.serpstack.com/search"
+    serpstack_timeout_seconds: float = 30.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -87,11 +95,28 @@ def _load_resend_secret_file() -> str:
     return ""
 
 
+def _load_serpstack_secret_file() -> str:
+    """Load the Serpstack key from a Render Secret File without logging it."""
+    for path in SERPSTACK_SECRET_FILES:
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, OSError):
+            continue
+        if value:
+            return value
+    return ""
+
+
 settings = Settings()
 if not settings.gemini_api_key:
     secret_from_file = _load_gemini_secret_file()
     if secret_from_file:
         settings.gemini_api_key = secret_from_file
+
+if not settings.serpstack_api_key:
+    serpstack_secret = _load_serpstack_secret_file()
+    if serpstack_secret:
+        settings.serpstack_api_key = serpstack_secret
 
 # The auth module historically reads RESEND_API_KEY from the environment.
 # Bridge Render's mounted Secret File into that runtime environment without
