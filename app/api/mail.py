@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from email.utils import parseaddr
 
 import resend
-from fastapi import APIRouter, Cookie, Header, HTTPException
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.auth import SESSION_COOKIE, authenticated_user
@@ -35,16 +35,19 @@ def _split(value: str) -> list[str]:
 
 
 def _row(row):
-    return {"id": str(row["id"]), "from": row["sender"], "to": row["recipients"], "cc": row["cc"], "subject": row["subject"], "date": row["created_at"], "text": row["body"], "html": "", "read": bool(row["is_read"])}
+    return {"id": str(row["id"]), "from": row["sender"], "to": row["recipients"], "cc": row["cc"], "subject": row["subject"], "date": row["created_at"], "text": row["body"], "html": "", "read": bool(row["is_read"]), "folder": row["folder"]}
 
 
 @router.get("/messages")
-async def list_messages(start: int = 0, limit: int = 100, aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
+async def list_messages(start: int = 0, limit: int = 100, folder: str = Query(default="inbox", pattern="^(inbox|sent|all)$"), aither_session: str | None = Cookie(default=None, alias=SESSION_COOKIE), authorization: str | None = Header(default=None)):
     user = _user(aither_session, authorization)
     start, limit = max(0, start), min(100, max(1, limit))
     with connection() as conn:
-        rows = conn.execute("SELECT * FROM mail_messages WHERE owner_user_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ? OFFSET ?", (str(user["id"]), limit, start)).fetchall()
-    return {"items": [_row(r) for r in rows], "start": start, "limit": limit}
+        if folder == "all":
+            rows = conn.execute("SELECT * FROM mail_messages WHERE owner_user_id = ? AND deleted = 0 ORDER BY id DESC LIMIT ? OFFSET ?", (str(user["id"]), limit, start)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM mail_messages WHERE owner_user_id = ? AND deleted = 0 AND folder = ? ORDER BY id DESC LIMIT ? OFFSET ?", (str(user["id"]), folder, limit, start)).fetchall()
+    return {"items": [_row(r) for r in rows], "start": start, "limit": limit, "folder": folder}
 
 
 @router.get("/messages/{message_id}")
